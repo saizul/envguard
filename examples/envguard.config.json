@@ -1,0 +1,10 @@
+{
+  "schema": "env.schema.json",
+  "example": ".env.example",
+  "strict": true,
+  "scan": {
+    "include": ["**/.env.example", "**/README*", "docker-compose*.yml", "deploy/**/*.yaml"],
+    "exclude": ["fixtures/**"],
+    "allow": ["id:jwt", "/^pk_test_/"]
+  }
+}

@@ -1,0 +1,15 @@
+# Keep real values in .env (git-ignored); compose reads it for ${...}.
+# `envguard scan` checks this file for credentials written inline.
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:postgres@db:5432/app
+    # Validate before the app starts; the container exits 1 with all problems.
+    command: sh -c "npx @saizul/envguard check --no-files --process-env && node server.js"
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}

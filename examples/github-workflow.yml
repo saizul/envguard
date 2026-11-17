@@ -1,0 +1,38 @@
+# .github/workflows/env.yml: annotate pull requests with env problems.
+name: Env hygiene
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  envguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@saizul"
+      - name: Install envguard from GitHub Packages
+        run: npm install --no-save @saizul/envguard
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The template must match the schema.
+      - run: npx envguard example --check --format github
+      # No credentials in committed files.
+      - run: npx envguard scan --format github
+      # .gitignore, template and schema agree.
+      - run: npx envguard doctor --format github
+      # Validate the variables the deploy job will use.
+      - run: npx envguard check --no-files --process-env --format github
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          ADMIN_EMAIL: ops@example.com

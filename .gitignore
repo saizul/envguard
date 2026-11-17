@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.tgz
+.DS_Store
+.idea/
+.vscode/
+.npm/
+.cache/
+
+# Local environment files. Templates and the examples stay in the repository.
+.env
+.env.*
+!.env.example
+!examples/**/.env*
