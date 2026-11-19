@@ -3,6 +3,13 @@ export { type EnvDiff, diffEnv } from './diff.js';
 export { doctorChecks, TEMPLATE_RE } from './doctor/checks.js';
 export { type DoctorOptions, type DoctorReport, runDoctor } from './doctor/index.js';
 export type { CheckResult, CheckStatus, DoctorCheck, DoctorContext } from './doctor/types.js';
+export {
+  DECLARATION_TARGETS,
+  type DeclarationOptions,
+  type DeclarationTarget,
+  generateDeclarations,
+  rawValueType,
+} from './declarations.js';
 export { DEFAULT_HEADER, type ExampleOptions, exampleValue, generateExample } from './example.js';
 export {
   defaultEnvFiles,

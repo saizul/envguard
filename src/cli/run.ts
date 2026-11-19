@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ConfigError, type EnvguardConfig, loadConfig } from '../config.js';
 import { diffEnv } from '../diff.js';
 import { runDoctor } from '../doctor/index.js';
+import { DECLARATION_TARGETS, type DeclarationTarget, generateDeclarations } from '../declarations.js';
 import { generateExample } from '../example.js';
 import { defaultEnvFiles, loadEnvFiles } from '../files.js';
 import { inferSchema, schemaToTypeScript } from '../init.js';
@@ -44,6 +45,7 @@ Usage: envguard <command> [options]
 Commands:
   check [files...]     Validate .env files (or the process environment) against the schema
   example              Write .env.example from the schema (secrets left blank)
+  types                Write env.d.ts: typed process.env / import.meta.env from the schema
   diff [env] [tmpl]    Compare the keys of two env files (default: .env .env.example)
   scan [paths...]      Find real-looking secrets in committed files
   doctor               Check .gitignore, the template and the schema together
@@ -85,6 +87,21 @@ no example or default.
   --check              Do not write; exit 1 when the file is out of date (for CI)
   --stdout             Print instead of writing
   --keep-unknown       Keep keys that are not in the schema
+  --sort               Sort keys alphabetically
+`,
+  types: `Usage: envguard types [options]
+
+Writes a TypeScript declaration file that types process.env (NodeJS.ProcessEnv)
+and/or import.meta.env (Vite) from the schema. Required variables are
+non-optional, case-sensitive enums become string unions, descriptions become
+doc comments.
+
+  --schema <file>      Schema file
+  -o, --output <file>  Output file (default: env.d.ts)
+  --target <t>         node (default), vite (only VITE_ variables) or both
+  --vite-prefix <p>    Prefix of client variables for --target vite (default: VITE_)
+  --check              Do not write; exit 1 when the file is out of date (for CI)
+  --stdout             Print instead of writing
   --sort               Sort keys alphabetically
 `,
   diff: `Usage: envguard diff [env] [template] [options]
@@ -147,6 +164,15 @@ const COMMAND_OPTIONS = {
     check: { type: 'boolean' },
     stdout: { type: 'boolean' },
     'keep-unknown': { type: 'boolean' },
+    sort: { type: 'boolean' },
+  },
+  types: {
+    schema: { type: 'string' },
+    output: { type: 'string', short: 'o' },
+    target: { type: 'string' },
+    'vite-prefix': { type: 'string' },
+    check: { type: 'boolean' },
+    stdout: { type: 'boolean' },
     sort: { type: 'boolean' },
   },
   diff: {},
@@ -231,8 +257,11 @@ export async function run(argv: string[], io: CliIO): Promise<number> {
     const { config } = loadConfig(cwd, typeof values.config === 'string' ? values.config : undefined);
     const ctx: Context = { cwd, env, config, values, positionals, c, io };
     const report = await COMMANDS[command](ctx);
-    if (report.findings.length > 0 || report.lines || format !== 'github')
-      io.stdout(formatReport(report, format, c));
+    if (report.findings.length > 0 || report.lines || format !== 'github') {
+      // With --stdout the generated file is the output; the summary goes to stderr so it can be redirected.
+      const write = values.stdout === true ? io.stderr : io.stdout;
+      write(formatReport(report, format, c));
+    }
     return exitCodeFor(report.findings, failOn);
   } catch (err) {
     if (err instanceof UsageError || err instanceof ConfigError || err instanceof SchemaError) {
@@ -393,6 +422,55 @@ const COMMANDS: Record<CommandName, (ctx: Context) => Promise<CommandReport>> = 
         ? `wrote ${output} (${count(Object.keys(schema).length, 'variable')})`
         : `${output} is already up to date`,
       data: { output, changed },
+    };
+  },
+
+  async types(ctx) {
+    const { schema, file: schemaFile } = await requireSchema(ctx);
+    const target = (typeof ctx.values.target === 'string' ? ctx.values.target : 'node') as DeclarationTarget;
+    if (!DECLARATION_TARGETS.includes(target)) {
+      throw new UsageError(`--target must be one of ${DECLARATION_TARGETS.join(', ')}`);
+    }
+    const output = typeof ctx.values.output === 'string' ? ctx.values.output : 'env.d.ts';
+    const path = resolvePath(ctx.cwd, output);
+    const text = generateDeclarations(schema, {
+      target,
+      source: relative(ctx.cwd, resolvePath(ctx.cwd, schemaFile)).replace(/\\/g, '/') || schemaFile,
+      sort: ctx.values.sort === true,
+      ...(typeof ctx.values['vite-prefix'] === 'string' ? { vitePrefix: ctx.values['vite-prefix'] } : {}),
+    });
+    if (ctx.values.stdout) {
+      ctx.io.stdout(text);
+      return { command: 'types', findings: [], summary: `built from ${schemaFile}`, lines: [] };
+    }
+    const current = existsSync(path) ? readFileSync(path, 'utf8') : undefined;
+    if (ctx.values.check) {
+      if (current === text) return { command: 'types', findings: [], summary: `${output} is up to date` };
+      return {
+        command: 'types',
+        findings: [
+          {
+            severity: 'error',
+            rule: 'types-outdated',
+            file: output,
+            message: `${output} ${current === undefined ? 'does not exist' : 'is out of date'}. Run "envguard types".`,
+          },
+        ],
+        summary: `${output} needs to be regenerated from ${schemaFile}`,
+      };
+    }
+    const changed = current !== text;
+    if (changed) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, text);
+    }
+    return {
+      command: 'types',
+      findings: [],
+      summary: changed
+        ? `wrote ${output} (${count(Object.keys(schema).length, 'variable')}, target ${target})`
+        : `${output} is already up to date`,
+      data: { output, changed, target },
     };
   },
 

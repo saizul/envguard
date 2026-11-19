@@ -83,8 +83,11 @@ that run in CI.
   problems reported with line numbers. Tested against tricky cases.
 - **The usual cascade**: `.env`, `.env.local`, `.env.<mode>`,
   `.env.<mode>.local`, with `.env.local` skipped in `test` mode.
-- **CLI commands** `check`, `example`, `diff`, `scan`, `doctor` and `init`,
-  each with `--format pretty|json|github` and exit codes for CI.
+- **Typed `process.env` and `import.meta.env`**: `envguard types` writes an
+  `env.d.ts` from the schema, so editors complete variable names and required
+  variables are `string`, not `string | undefined`.
+- **CLI commands** `check`, `example`, `types`, `diff`, `scan`, `doctor` and
+  `init`, each with `--format pretty|json|github` and exit codes for CI.
 - **Secret scanning** with 14 built-in patterns (GitHub, GitLab, AWS, Stripe,
   Slack, Google, npm, SendGrid, Azure, private keys, JWTs, passwords in URLs
   and high-entropy values for secret-like names), placeholder detection and
@@ -284,6 +287,7 @@ envguard <command> [options]
 
   check [files...]     Validate .env files (or the process environment) against the schema
   example              Write .env.example from the schema (secrets left blank)
+  types                Write env.d.ts: typed process.env / import.meta.env from the schema
   diff [env] [tmpl]    Compare the keys of two env files (default: .env .env.example)
   scan [paths...]      Find real-looking secrets in committed files
   doctor               Check .gitignore, the template and the schema together
@@ -341,6 +345,44 @@ DATABASE_URL=
 Secrets are always blank. Non-secret values come from `example`, then
 `default`; a value someone wrote by hand into the template is kept when the
 schema has neither. `--keep-unknown` keeps keys the schema does not declare.
+
+### types
+
+```console
+$ envguard types                       # write or refresh env.d.ts (process.env)
+$ envguard types --target vite -o src/vite-env.d.ts
+$ envguard types --target both --check # CI: exit 1 when it is out of date
+```
+
+```ts
+// Environment variable types created by envguard from env.schema.json.
+// Do not edit by hand; run "envguard types" after changing the schema.
+
+export {};
+
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      /**
+       * Port the HTTP server listens on
+       * port (1-65535), default: 3000
+       */
+      PORT?: string;
+      /** url (postgres, postgresql), required, secret */
+      DATABASE_URL: string;
+    }
+  }
+}
+```
+
+The declarations describe the raw values, which are always strings at
+runtime: required variables are `string`, variables with a default, optional
+ones and ones with `aliases` are `string | undefined`, and case-sensitive
+enums become unions such as `"debug" | "info"`. Use `loadEnv()` for parsed
+numbers, booleans and lists. `--target vite` declares `ImportMetaEnv` with
+only the client variables (`VITE_*`, or `--vite-prefix`), `--target both`
+declares both. Add the file to your `tsconfig.json` `include` if it is
+outside the included folders.
 
 ### diff
 
@@ -554,6 +596,9 @@ if (!result.ok) throw new EnvValidationError(result.issues);
 export const appEnv = result.env;
 ```
 
+`envguard types --target vite -o src/vite-env.d.ts` types `import.meta.env`
+from the same schema.
+
 ### Docker and Docker Compose
 
 Keep real values in a git-ignored `.env` and reference them with `env_file`
@@ -599,6 +644,7 @@ complete workflow, including installing from GitHub Packages, is in
 | `loadEnvFiles(options)`                  | Read and merge the cascade; values, origins and problems             |
 | `defaultEnvFiles(mode)`                  | The cascade file names                                               |
 | `generateExample(schema, options)`       | `.env.example` contents                                              |
+| `generateDeclarations(schema, options)`  | `env.d.ts` contents (`target`: `node`, `vite` or `both`)             |
 | `diffEnv(actual, template)`              | Missing, extra and empty keys                                        |
 | `scanText(text, file, options)`          | Secret findings in a string                                          |
 | `scanFiles(options)`                     | Find files and scan them                                             |
@@ -709,8 +755,7 @@ self-contained.
 
 - `envguard check --watch` for development servers
 - Detect `.env` files that are already tracked by git (reading the index)
-- Schema export to JSON Schema and TypeScript declaration files for
-  `process.env` / `import.meta.env`
+- Schema export to JSON Schema
 - More secret patterns (Twilio, Mailgun, Discord, Hugging Face, Shopify)
 - Monorepo mode: run `doctor` and `scan` for every workspace package
 - Plugins loaded from the config file (custom types, patterns and checks)
