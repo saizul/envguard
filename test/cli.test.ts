@@ -226,6 +226,9 @@ describe('cli: example', () => {
     const cwd = project({ 'env.schema.json': SCHEMA });
     const r = await cli(cwd, ['example', '--stdout']);
     assert.match(r.stdout, /^# Copy this file/);
+    // Only the file goes to stdout, so "envguard example --stdout > file" works.
+    assert.doesNotMatch(r.stdout, /built from/);
+    assert.match(r.stderr, /built from env\.schema\.json/);
     assert.ok(!existsSync(join(cwd, '.env.example')));
     const o = await cli(cwd, ['example', '-o', 'templates/.env.sample']);
     assert.equal(o.code, 0);

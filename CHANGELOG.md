@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `envguard types` writes a TypeScript declaration file (default `env.d.ts`) from the schema that types
+  `process.env` (`NodeJS.ProcessEnv`), `import.meta.env` (`ImportMetaEnv`, only `VITE_*` variables or
+  `--vite-prefix`) or both (`--target node|vite|both`). Required variables are `string`, variables with a default,
+  optional ones and ones with aliases are optional, case-sensitive enums become string unions, aliases are
+  declared as deprecated, and descriptions become doc comments. `--check` fails CI when the file is out of date
+  (`types-outdated`), `--stdout` prints it and `--sort` sorts the keys.
+- Library: `generateDeclarations()`, `rawValueType()`, `DECLARATION_TARGETS` and the `DeclarationOptions` /
+  `DeclarationTarget` types.
+
+### Fixed
+
+- `envguard example --stdout` printed its summary line after the template on stdout, so
+  `envguard example --stdout > .env.example` wrote it into the file. With `--stdout` the summary now goes to stderr.
+
 ## [0.1.0] - 2026-11-17
 
 ### Added
